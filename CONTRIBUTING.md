@@ -328,6 +328,20 @@ New examples should be added to the gallery (`assets/index.html`) so they stay b
 
 Motion is opt-in. Start from `skills/diagram-design/assets/template-motion.html`, follow `references/animation.md`, and run `python3 scripts/verify-motion.py <file>` plus `python3 scripts/test-verify-motion.py`. A motion file must preserve complete no-JavaScript, reduced-motion, print, screenshot, and export states. Keep the controller byte-for-byte identical to the template; changes require updating the canonical template, example, documentation, and adversarial tests together.
 
+## Measuring a SKILL.md change
+
+The gates check shipped examples. They cannot tell whether a wording change in `SKILL.md` makes agents draw better diagrams. For that, `evals/` holds six prompts in the `claude plugin eval` format, each with a known trap: more components than the node budget, very long labels, a retry back edge, connectors converging on one node, a bar chart that needs a takeaway title, and a Mermaid import. Each case's `expect.json` names the trap and the node budget.
+
+Every case is a full agent session billed to your own Claude login, so run the suite on purpose, not in CI. Run it once on `main` and once on your branch, then compare the two `scores.md` tables:
+
+```bash
+claude plugin eval . --ablation none --runs 3 --keep-temp --trust-plugin \
+  --allow-tools Bash Write Edit --no-publish --json evals/results/branch.json
+python3 scripts/score-skill-evals.py evals/results/branch.json
+```
+
+`--keep-temp` is required, because the scorer reads the files the agent wrote from the kept sandbox. For each output it counts `self_check.py` failures, `verify-geometry.py` and `lint-render.py` findings, and boxes against the node budget. From the trace it records whether the agent loaded the skill, rendered a PNG, opened an image, and ran `self_check.py`. Visual judgment stays with people: `contact-sheet.html` shows every output side by side. Add `--case <name>` to run one case, and `--max-cost-usd` to cap a run. Results go to `evals/results/`, which git ignores.
+
 ## Design decisions (ADRs)
 
 Settled policies live as short records in `docs/adr/` — one pinned motion controller, semantic patterns never expanding the visual-type taxonomy, the reveal-only autoplay rule, the SKILL.md byte cap with its trigger-rich description requirement, geometric label placement being verified rather than reviewed, and plugin versions being bumped on `main` after merge rather than in PRs. Read the relevant ADR before proposing a change that touches one; when a PR settles a new policy, add an ADR in the same PR.

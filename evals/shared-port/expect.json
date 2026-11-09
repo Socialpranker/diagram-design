@@ -1,0 +1,4 @@
+{
+  "trap": "several connectors converging on one node edge, where ports must stay apart",
+  "max_nodes": 9
+}

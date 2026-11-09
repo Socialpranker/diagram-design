@@ -1,0 +1,4 @@
+{
+  "trap": "a retry back edge that must route around nodes instead of crossing them",
+  "max_nodes": 9
+}

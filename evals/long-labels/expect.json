@@ -1,0 +1,4 @@
+{
+  "trap": "step labels of 40 to 60 characters that overflow standard node widths",
+  "max_nodes": 9
+}
