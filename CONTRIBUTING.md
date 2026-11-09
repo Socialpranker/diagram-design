@@ -340,7 +340,7 @@ claude plugin eval . --ablation none --runs 3 --keep-temp --trust-plugin \
 python3 scripts/score-skill-evals.py evals/results/branch.json
 ```
 
-`--keep-temp` is required, because the scorer reads the files the agent wrote from the kept sandbox. For each output it counts `self_check.py` failures, `verify-geometry.py` and `lint-render.py` findings, and boxes against the node budget. From the trace it records whether the agent loaded the skill, rendered a PNG, opened an image, and ran `self_check.py`. Visual judgment stays with people: `contact-sheet.html` shows every output side by side. Add `--case <name>` to run one case, and `--max-cost-usd` to cap a run. Results go to `evals/results/`, which git ignores.
+`--keep-temp` is required, because the scorer reads the files the agent wrote from the kept sandbox. For each output it counts `self_check.py` failures, `verify-geometry.py` and `lint-render.py` findings, and boxes against the node budget. From the trace it records whether the agent loaded the skill, tried to render a PNG, opened an image, and ran `self_check.py`; whether a PNG was actually produced is read from the files the run left. On macOS the eval sandbox stops Chromium from starting, so no run can produce a PNG there, and steps that depend on looking at a render cannot be measured with this runner. Visual judgment stays with people: `contact-sheet.html` shows every output side by side. Add `--case <name>` to run one case, and `--max-cost-usd` to cap a run. Results go to `evals/results/`, which git ignores.
 
 ## Design decisions (ADRs)
 

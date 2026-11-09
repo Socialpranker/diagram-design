@@ -11,8 +11,8 @@ script finds the files the agent wrote, then records:
 * the node count (stroked boxes at least 60x40 that hold no other box;
   diamonds and circles are not counted) against the case budget in
   evals/<case>/expect.json;
-* from the trace: whether the skill was loaded, whether the agent rendered a
-  PNG, opened an image with Read, and ran self_check.py itself.
+* from the trace: whether the skill was loaded, whether the agent tried to render a
+  PNG and whether a PNG file exists afterwards, opened an image with Read, and ran self_check.py itself.
 
 Visual quality is left to people: every HTML output is rasterised into a
 contact sheet. Outputs, scores.json, scores.md and contact-sheet.html go to
@@ -94,24 +94,39 @@ def tool_uses(trace: Path):
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if event.get("type") != "assistant":
+        message = event.get("message")
+        if event.get("type") != "assistant" or not isinstance(message, dict):
             continue
-        for block in event.get("message", {}).get("content", []):
+        for block in message.get("content") or []:
             if block.get("type") == "tool_use":
                 yield block.get("name"), block.get("input") or {}
 
 
 def behaviour(trace: Path) -> dict:
-    seen = {"skill_loaded": False, "rendered_png": False, "opened_image": False, "ran_self_check": False}
+    # Whether a render *succeeded* is read from the files it left, not from
+    # tool output: a trailing `; echo` or `| tail` hides a failed exit code.
+    sealed = trace.parent.parent / "sealed"
+    seen = {
+        "skill_loaded": False,
+        "tried_render": False,
+        "rendered_png": any(
+            any((sealed / part).glob("**/*.png")) for part in ("home/cwd", "tmp")
+        ),
+        "opened_image": False,
+        "ran_self_check": False,
+        "html_edits_after_image": 0,
+    }
     for name, args in tool_uses(trace):
         if name == "Skill" and "diagram-design" in json.dumps(args):
             seen["skill_loaded"] = True
         elif name == "Bash":
             command = str(args.get("command", ""))
-            seen["rendered_png"] |= bool(RENDER_RE.search(command))
+            seen["tried_render"] |= bool(RENDER_RE.search(command))
             seen["ran_self_check"] |= "self_check.py" in command
         elif name == "Read" and IMAGE_RE.search(str(args.get("file_path", ""))):
             seen["opened_image"] = True
+        elif name in {"Write", "Edit"} and seen["opened_image"] and str(args.get("file_path", "")).endswith(".html"):
+            seen["html_edits_after_image"] += 1
     return seen
 
 
@@ -155,8 +170,8 @@ def score(result_file: Path, out: Path, lint_render: bool) -> list[dict]:
                     row["error"] = row["error"] or "no trace; was the suite run with --keep-temp?"
                     rows.append(row)
                     continue
-                row.update(behaviour(trace))
                 cwd = workspace(trace)
+                row.update(behaviour(trace))
                 dest = out / "artifacts" / f"{case['name']}-{arm}-{index}"
                 for html_file in sorted(cwd.glob("**/*.html")) if cwd.exists() else []:
                     if ".claude" in html_file.relative_to(cwd).parts:
@@ -180,7 +195,7 @@ def write_reports(rows: list[dict], out: Path) -> None:
     (out / "scores.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
     header = [
         "case", "arm", "run", "html", "self_check", "geometry", "render", "nodes/budget",
-        "skill", "rendered png", "opened image", "ran self_check", "cost $",
+        "skill", "tried render", "rendered png", "opened image", "html edits after image", "ran self_check", "cost $",
     ]
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     totals = {"self_check": 0, "geometry": 0, "render": 0, "over_budget": 0, "cost": 0.0}
@@ -198,8 +213,9 @@ def write_reports(rows: list[dict], out: Path) -> None:
         cells = [
             row["case"], row["arm"], str(row["run"]), str(len(outputs)),
             str(sums["self_check"]), str(sums["geometry"]), str(sums["render"]), nodes,
-            flag(row.get("skill_loaded")), flag(row.get("rendered_png")),
-            flag(row.get("opened_image")), flag(row.get("ran_self_check")),
+            flag(row.get("skill_loaded")), flag(row.get("tried_render")), flag(row.get("rendered_png")),
+            flag(row.get("opened_image")), flag(row.get("html_edits_after_image")),
+            flag(row.get("ran_self_check")),
             f"{row['cost_usd']:.2f}" if row["cost_usd"] is not None else "-",
         ]
         lines.append("| " + " | ".join(cells) + " |")
